@@ -32,7 +32,7 @@ jobs:
     uses: ./.github/workflows/sast.yml
     secrets: inherit
   
-   #Análisis y Uso de Licencias.
+  #Análisis y Uso de Licencias.
   license-compliance:
     needs: build
     name: License Compliance
