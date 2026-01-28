@@ -1,0 +1,69 @@
+services:
+    db:
+        image: mongo:latest
+        container_name: mongodb-atlas-local
+        networks:
+            - express-mongo-network
+        ports:
+            - "27017:27017"
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: root
+            MONGO_INITDB_ROOT_PASSWORD: example
+            MONGO_INITDB_DATABASE: test
+        #    MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+        #    MONGO_HOST: ${MONGO_HOST}
+        healthcheck:
+            test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 20s
+        volumes:
+            - ./data/mongodb/db:/data/db
+
+    login-service:
+        build: Login/
+        networks:
+            - express-mongo-network
+        container_name: login-service
+        
+        #environment:
+        #    PORT: ${PORT}
+        #    JWT_SECRET: ${JWT_SECRET}
+        #    NODE_SENDING_EMAIL_ADDRESS: ${NODE_SENDING_EMAIL_ADDRESS}
+        #    NODE_SENDING_EMAIL_PASSWORD: ${NODE_SENDING_EMAIL_PASSWORD}
+        #    HMAC_VERIFICATION_CODE_SECRET: ${HMAC_VERIFICATION_CODE_SECRET}
+        #    NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED}
+        env_file:
+            - ./Login/.env
+        #depends on the database with healthcheck
+        depends_on:
+            db:
+                condition: service_healthy
+        ports:
+            - "3000:3000"
+
+    user-service:
+        build: Usuarios/
+        networks:
+            - express-mongo-network
+        container_name: user-service
+        
+        #environment:
+        #    PORT: ${PORT}
+        #    JWT_SECRET: ${JWT_SECRET}
+        #    NODE_SENDING_EMAIL_ADDRESS: ${NODE_SENDING_EMAIL_ADDRESS}
+        #    NODE_SENDING_EMAIL_PASSWORD: ${NODE_SENDING_EMAIL_PASSWORD}
+        #    HMAC_VERIFICATION_CODE_SECRET: ${HMAC_VERIFICATION_CODE_SECRET}
+        #    NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED}
+        env_file:
+            - ./Usuarios/.env
+        depends_on:
+            - login-service
+        #depends on the database with healthcheck
+        ports:
+            - "3001:3001"
+
+networks:
+    express-mongo-network:
+        driver: bridge

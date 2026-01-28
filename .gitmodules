@@ -1,0 +1,6 @@
+[submodule "back-end_PIS6TO"]
+	path = back-end_PIS6TO
+	url = https://github.com/DaltonMaza/back-end_PIS6TO.git
+[submodule "front-end_PIS6TO"]
+	path = front-end_PIS6TO
+	url = https://github.com/DaltonMaza/front-end_PIS6TO.git

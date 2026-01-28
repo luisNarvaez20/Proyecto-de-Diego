@@ -1,0 +1,39 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const db = require('./src/db');
+const router = require('./src/routes');
+const userRouter = require('./src/routes/usuarioRouter');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const initializeRoles = require("./src/controllers/userController");
+//import cors
+const cors = require('cors');
+const port = process.env.PORT;
+
+require('dotenv').config();
+
+var app = express();
+
+db().then(() => {
+    console.log('MongoDB connected...');
+}).catch((err) => {
+    console.error(err.message);
+    //process.exit(1);
+});
+
+initializeRoles.initializeRoles();
+
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
+}));
+app.use(helmet());
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
+app.use('/api', router);
+app.use('/user', userRouter);
+
+app.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
+});
