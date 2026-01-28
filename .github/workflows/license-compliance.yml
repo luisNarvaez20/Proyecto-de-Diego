@@ -1,33 +1,38 @@
-name: 05 License Compliance
+name: 05 - License Compliance
 
 on:
-    workflow_dispatch:
-    workflow_call:
+  workflow_dispatch:
+  workflow_call:
 
 jobs:
-    license-finder:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+  license-compliance:
+    name: License Compliance (${{ matrix.project }})
+    runs-on: ubuntu-latest
 
-            - name: Run License Finder
-              uses: jmservera/license-finder-action@main
-              with:
-                permitted-licenses: MIT, Apache-2.0, 
-                approved-dependencies:  | 
-                    junit,junit-jupiter
+    strategy:
+      matrix:
+        project:
+          - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
 
-            - name: Publish Test Results
-              uses: EnricoMi/publish-unit-test-result-action@v2.2.0
-              if: always()
-              with:
-                junit_files: "license_finder_report.xml"
-                check_name: "License Compliance Check"         
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: 'Upload Dependency Review Report'
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                name: license-finder-report
-                path: ${{ github.workspace }}/license_finder_report.xml
+      - name: Run License Finder
+        uses: jmservera/license-finder-action@main
+        with:
+          project-path: ${{ matrix.project }}
+          permitted-licenses: |
+            MIT
+            Apache-2.0
+          approved-dependencies: |
+            junit
+            junit-jupiter
+
+      - name: Upload License Compliance Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-finder-report-${{ matrix.project }}
+          path: ${{ matrix.project }}/license_finder_report.xml

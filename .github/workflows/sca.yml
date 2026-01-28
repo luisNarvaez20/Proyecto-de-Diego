@@ -1,0 +1,37 @@
+name: 03 - SCA (Dependency Vulnerabilities)
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  sca:
+    name: SCA (${{ matrix.project }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.project }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.project }}
+        run: npm ci
+
+      - name: Run npm audit (SCA)
+        working-directory: ${{ matrix.project }}
+        run: npm audit --audit-level=high
+        continue-on-error: true
