@@ -5,41 +5,53 @@ on:
   workflow_call:
 
 jobs:
-  build:
+  build-frontend:
+    name: Build Frontend
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      checks: write
-      pull-requests: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/package-lock.json
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install dependencies (Frontend)
+        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+        run: npm ci
 
-      - name: Run tests
+      - name: Test Frontend
+        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
         run: npm test
         continue-on-error: true
 
-      - name: Build project
-        run: |
-          if [ -f package.json ] && jq -e '.scripts.build' package.json > /dev/null; then
-            npm run build
-          else
-            echo "No build script defined"
-          fi
+      - name: Build Frontend
+        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+        run: npm run build --if-present
 
-      - name: Upload node_modules (optional)
-        uses: actions/upload-artifact@v4
+
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: node-modules
-          path: node_modules
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/package-lock.json
+
+      - name: Install dependencies (Backend)
+        working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+        run: npm ci
+
+      - name: Test Backend
+        working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+        run: npm test
+        continue-on-error: true
