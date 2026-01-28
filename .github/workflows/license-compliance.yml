@@ -6,24 +6,31 @@ on:
 
 jobs:
   license-compliance:
+    name: License Compliance (${{ matrix.project }})
     runs-on: ubuntu-latest
+
     strategy:
+      fail-fast: false
       matrix:
-        project: [front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0, back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5]
+        project:
+          - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: jmservera/license-finder-action@main
+      - name: Run License Finder
+        uses: jmservera/license-finder-action@main
         with:
-          project-path: ${{ matrix.project }}
+          base-path: ${{ matrix.project }}
           permitted-licenses: |
             MIT
             Apache-2.0
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload License Report
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: license-report-${{ matrix.project }}
-          path: ${{ matrix.project }}/license_finder_report.xml
-
+          path: license_finder_report.xml
