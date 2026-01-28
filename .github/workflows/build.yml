@@ -13,17 +13,25 @@ jobs:
         working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
           cache-dependency-path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/package-lock.json
 
-      - run: npm ci
-      - run: npm test
-      - run: npm run build --if-present
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test Frontend
+        run: npm test --if-present
+
+      - name: Build Frontend
+        run: npm run build --if-present
+
 
   build-backend:
     name: Build Backend
@@ -33,13 +41,18 @@ jobs:
         working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
           cache-dependency-path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/package-lock.json
 
-      - run: npm ci
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test Backend
+        run: npm test --if-present
