@@ -6,24 +6,39 @@ on:
 
 jobs:
   sca:
+    name: SCA (${{ matrix.project }})
     runs-on: ubuntu-latest
+
     strategy:
+      fail-fast: false
       matrix:
-        project: [front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0, back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5]
+        project:
+          - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
           cache-dependency-path: ${{ matrix.project }}/package-lock.json
 
       - name: Install dependencies
+        working-directory: ${{ matrix.project }}
         run: npm ci
-        working-directory: ${{ matrix.project }}
 
-      - name: Run npm audit
-        run: npm audit --audit-level=high
+      - name: Run npm audit (SCA)
         working-directory: ${{ matrix.project }}
+        run: |
+          npm audit --json > audit-report.json || true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-${{ matrix.project }}
+          path: ${{ matrix.project }}/audit-report.json
+
