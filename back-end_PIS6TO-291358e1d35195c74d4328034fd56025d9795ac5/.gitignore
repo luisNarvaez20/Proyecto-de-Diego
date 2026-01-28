@@ -1,0 +1,16 @@
+# Dependencias instaladas
+/node_modules
+
+# Archivos de configuración locales
+.env
+
+# Logs
+*.log
+
+# Archivos generados por IDEs
+.vscode
+.idea
+
+# Archivos de caché
+*.log*
+*.swp
