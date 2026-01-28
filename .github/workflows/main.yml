@@ -5,16 +5,14 @@ on:
     paths-ignore:
       - '**/*.md'
       - '**/*.txt'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: read
   checks: write
   pull-requests: write
-  actions: read
   security-events: write
-  packages: write
 
 jobs:
   build:
@@ -22,9 +20,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     secrets: inherit
 
-  # Análisis de código Estático
   sast:
-    needs: build
     name: SAST
+    needs: build
     uses: ./.github/workflows/sast.yml
     secrets: inherit
