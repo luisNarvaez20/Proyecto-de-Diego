@@ -8,50 +8,38 @@ jobs:
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: 18
+          cache: npm
           cache-dependency-path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/package-lock.json
 
-      - name: Install dependencies (Frontend)
-        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-        run: npm ci
-
-      - name: Test Frontend
-        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-        run: npm test
-        continue-on-error: true
-
-      - name: Build Frontend
-        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-        run: npm run build --if-present
-
+      - run: npm ci
+      - run: npm test
+      - run: npm run build --if-present
 
   build-backend:
     name: Build Backend
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: 18
+          cache: npm
           cache-dependency-path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/package-lock.json
 
-      - name: Install dependencies (Backend)
-        working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-        run: npm ci
-
-      - name: Test Backend
-        working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-        run: npm test
-        continue-on-error: true
+      - run: npm ci
+      - run: npm test
