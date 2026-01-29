@@ -40,6 +40,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Debug environment
+        run: |
+          echo "SERVICE=${{ env.SERVICE }}"
+          echo "IMAGE_TAG=${{ env.IMAGE_TAG }}"
+
       - name: Log in to Container Registry
         uses: docker/login-action@v2
         with:
@@ -49,6 +54,11 @@ jobs:
 
       - name: Build Docker image
         run: |
+          if [[ -z "${{ env.SERVICE }}" ]]; then
+            echo "ERROR: La variable SERVICE está vacía. Revisa los inputs."
+            exit 1
+          fi
+
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
             docker build -t ${{ env.IMAGE_TAG }} ./back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
           else
@@ -57,9 +67,11 @@ jobs:
 
       - name: Start Docker container
         run: |
-          docker rm -f dast-${{ env.SERVICE }} || true
+          CONTAINER_NAME="dast-${{ env.SERVICE }}"
+          docker rm -f $CONTAINER_NAME || true
+
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            docker run -d -p 8080:8080 --name dast-backend \
+            docker run -d -p 8080:8080 --name $CONTAINER_NAME \
               -e MONGO_URI=${{ secrets.MONGO_URI }} \
               -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
               -e NODE_SENDING_EMAIL_ADDRESS=${{ secrets.NODE_SENDING_EMAIL_ADDRESS }} \
@@ -67,27 +79,39 @@ jobs:
               -e HMAC_VERIFICATION_CODE_SECRET=${{ secrets.HMAC_VERIFICATION_CODE_SECRET }} \
               -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
               ${{ env.IMAGE_TAG }}
+            TARGET_URL="http://localhost:8080"
           else
-            docker run -d -p 3000:3000 --name dast-frontend ${{ env.IMAGE_TAG }}
+            docker run -d -p 3000:3000 --name $CONTAINER_NAME ${{ env.IMAGE_TAG }}
+            TARGET_URL="http://localhost:3000"
           fi
 
-      - name: Wait for container
+          echo "TARGET_URL=$TARGET_URL" >> $GITHUB_ENV
+
+      - name: Wait for container to be ready
         run: |
-          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            timeout 300 bash -c 'until [[ "$(curl -s -o /dev/null -w "%{http_code}" localhost:8080/echo?msg=test)" == "200" ]]; do sleep 5; done'
-            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
-          else
-            timeout 300 bash -c 'until [[ "$(curl -s -o /dev/null -w "%{http_code}" localhost:3000)" == "200" ]]; do sleep 5; done'
-            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
+          echo "Esperando que el servicio esté listo en ${{ env.TARGET_URL }}..."
+          TIMEOUT=300
+          INTERVAL=5
+          END=$((SECONDS+TIMEOUT))
+
+          while [[ $SECONDS -lt $END ]]; do
+            STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.TARGET_URL }}/echo?msg=test || echo "000")
+            if [[ "$STATUS_CODE" == "200" ]]; then
+              echo "Servicio listo!"
+              break
+            fi
+            sleep $INTERVAL
+          done
+
+          if [[ "$STATUS_CODE" != "200" ]]; then
+            echo "ERROR: El servicio no respondió con 200 en $TIMEOUT segundos"
+            exit 1
           fi
 
       - name: Smoke test
         run: |
-          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            curl -s localhost:8080/echo?msg=Hello
-          else
-            curl -s localhost:3000
-          fi
+          echo "Probando que el contenedor responde..."
+          curl -s ${{ env.TARGET_URL }}
 
       - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.11.0
