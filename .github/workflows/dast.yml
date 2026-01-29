@@ -1,6 +1,7 @@
 name: DAST Scan - Proyecto de Diego
 
 on:
+  # Ejecución manual
   workflow_dispatch:
     inputs:
       service:
@@ -10,12 +11,12 @@ on:
         options:
           - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
           - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-
       image-tag:
         type: string
         description: 'Tag que se usará para la imagen Docker'
         required: true
 
+  # Reusable desde otros workflows
   workflow_call:
     inputs:
       service:
@@ -27,28 +28,31 @@ on:
 
 jobs:
   dast-scan:
-    name: DAST Scan
     runs-on: ubuntu-latest
     env:
       REGISTRY: ghcr.io
-      SERVICE: ${{ github.event.inputs.service || github.inputs.service }}
-      IMAGE_TAG: ${{ github.event.inputs['image-tag'] || github.inputs['image-tag'] }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Debug environment
+      - name: Set SERVICE and IMAGE_TAG
         run: |
-          echo "SERVICE=${{ env.SERVICE }}"
-          echo "IMAGE_TAG=${{ env.IMAGE_TAG }}"
-
-      - name: Validate SERVICE input
-        run: |
-          if [[ -z "${{ env.SERVICE }}" ]]; then
-            echo "ERROR: La variable SERVICE está vacía. Revisa los inputs."
+          if [ -n "${{ github.event.inputs.service }}" ]; then
+            echo "SERVICE=${{ github.event.inputs.service }}" >> $GITHUB_ENV
+            echo "IMAGE_TAG=${{ github.event.inputs['image-tag'] }}" >> $GITHUB_ENV
+          elif [ -n "${{ github.inputs.service }}" ]; then
+            echo "SERVICE=${{ github.inputs.service }}" >> $GITHUB_ENV
+            echo "IMAGE_TAG=${{ github.inputs['image-tag'] }}" >> $GITHUB_ENV
+          else
+            echo "ERROR: SERVICE o IMAGE_TAG vacíos"
             exit 1
           fi
+
+      - name: Debug environment
+        run: |
+          echo "SERVICE=$SERVICE"
+          echo "IMAGE_TAG=$IMAGE_TAG"
 
       - name: Log in to Container Registry
         uses: docker/login-action@v2
@@ -59,18 +63,18 @@ jobs:
 
       - name: Build Docker image
         run: |
-          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            docker build -t ${{ env.IMAGE_TAG }} ./back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          TAG_FULL="${REGISTRY}/myorg/${IMAGE_TAG}"  # Cambia myorg por tu usuario/repo
+          if [[ "$SERVICE" == *"back-end"* ]]; then
+            docker build -t $TAG_FULL ./back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
           else
-            docker build -t ${{ env.IMAGE_TAG }} ./front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+            docker build -t $TAG_FULL ./front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
           fi
 
       - name: Start Docker container
         run: |
-          CONTAINER_NAME="dast-${{ env.SERVICE }}"
+          CONTAINER_NAME="dast-${SERVICE}"
           docker rm -f $CONTAINER_NAME || true
-
-          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+          if [[ "$SERVICE" == *"back-end"* ]]; then
             docker run -d -p 8080:8080 --name $CONTAINER_NAME \
               -e MONGO_URI=${{ secrets.MONGO_URI }} \
               -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
@@ -78,53 +82,48 @@ jobs:
               -e NODE_SENDING_EMAIL_PASSWORD=${{ secrets.NODE_SENDING_EMAIL_PASSWORD }} \
               -e HMAC_VERIFICATION_CODE_SECRET=${{ secrets.HMAC_VERIFICATION_CODE_SECRET }} \
               -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
-              ${{ env.IMAGE_TAG }}
-            TARGET_URL="http://localhost:8080"
+              $TAG_FULL
+            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
           else
-            docker run -d -p 3000:3000 --name $CONTAINER_NAME ${{ env.IMAGE_TAG }}
-            TARGET_URL="http://localhost:3000"
+            docker run -d -p 3000:3000 --name $CONTAINER_NAME $TAG_FULL
+            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
           fi
-
-          echo "TARGET_URL=$TARGET_URL" >> $GITHUB_ENV
 
       - name: Wait for container to be ready
         run: |
-          echo "Esperando que el servicio esté listo en ${{ env.TARGET_URL }}..."
+          echo "Esperando que el servicio esté listo en $TARGET_URL..."
           TIMEOUT=300
           INTERVAL=5
           END=$((SECONDS+TIMEOUT))
-
           while [[ $SECONDS -lt $END ]]; do
-            STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.TARGET_URL }}/echo?msg=test || echo "000")
+            STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" $TARGET_URL/echo?msg=test || echo "000")
             if [[ "$STATUS_CODE" == "200" ]]; then
               echo "Servicio listo!"
               break
             fi
             sleep $INTERVAL
           done
-
           if [[ "$STATUS_CODE" != "200" ]]; then
             echo "ERROR: El servicio no respondió con 200 en $TIMEOUT segundos"
             exit 1
           fi
 
       - name: Smoke test
-        run: |
-          curl -s ${{ env.TARGET_URL }}
+        run: curl -s $TARGET_URL
 
       - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.11.0
         with:
           docker_name: 'owasp/zap2docker-stable'
           token: ${{ secrets.GITHUB_TOKEN }}
-          target: ${{ env.TARGET_URL }}
+          target: $TARGET_URL
           cmd_options: '-a -j -l WARN -z "-addoninstallall"'
           allow_issue_writing: false
 
       - name: Upload HTML Report
         uses: actions/upload-artifact@v4
         with:
-          name: DAST_Report_${{ env.SERVICE }}.html
+          name: DAST_Report_${SERVICE}.html
           path: report_html.html
 
       - name: Stop and clean up container
