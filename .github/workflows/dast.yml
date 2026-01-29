@@ -12,16 +12,7 @@ on:
           - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
       image-tag:
         type: string
-        description: 'Nombre de la imagen Docker a escanear'
-        required: true
-
-  workflow_call:
-    inputs:
-      service:
-        type: string
-        required: true
-      image-tag:
-        type: string
+        description: 'Tag que se usará para la imagen Docker'
         required: true
 
 env:
@@ -45,12 +36,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Construye la imagen Docker local
+      - name: Build Docker image
+        run: |
+          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+            docker build -t ${{ env.IMAGE_TAG }} ./back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          else
+            docker build -t ${{ env.IMAGE_TAG }} ./front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          fi
+
+      # Levanta el contenedor para pruebas
       - name: Start Docker container
         run: |
-          docker rm ${{ env.SERVICE }} || true
-          
+          docker rm -f dast-${{ env.SERVICE }} || true
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            docker run -d -p 8080:8080 --name backend \
+            docker run -d -p 8080:8080 --name dast-backend \
               -e MONGO_URI=${{ secrets.MONGO_URI }} \
               -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
               -e NODE_SENDING_EMAIL_ADDRESS=${{ secrets.NODE_SENDING_EMAIL_ADDRESS }} \
@@ -59,32 +59,30 @@ jobs:
               -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
               ${{ env.IMAGE_TAG }}
           else
-            docker run -d -p 3000:3000 --name frontend ${{ env.IMAGE_TAG }}
+            docker run -d -p 3000:3000 --name dast-frontend ${{ env.IMAGE_TAG }}
           fi
 
-      - name: Wait for container to be ready
+      # Espera a que el servicio esté listo
+      - name: Wait for container
         run: |
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
             timeout 300 bash -c 'until [[ "$(curl -s -o /dev/null -w "%{http_code}" localhost:8080/echo?msg=test)" == "200" ]]; do sleep 5; done'
+            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
           else
             timeout 300 bash -c 'until [[ "$(curl -s -o /dev/null -w "%{http_code}" localhost:3000)" == "200" ]]; do sleep 5; done'
+            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
           fi
 
-      - name: Smoke test container
+      # Prueba rápida de que el contenedor responde
+      - name: Smoke test
         run: |
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            curl -s localhost:8080/echo?msg=Hello%20World!
+            curl -s localhost:8080/echo?msg=Hello
           else
             curl -s localhost:3000
           fi
 
-      - name: Set Target URL for ZAP
-        run: |
-          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
-          else
-            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
-
+      # Escaneo OWASP ZAP
       - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.11.0
         with:
@@ -94,20 +92,18 @@ jobs:
           cmd_options: '-a -j -l WARN -z "-addoninstallall"'
           allow_issue_writing: false
 
+      # Guardar reporte
       - name: Upload HTML Report
         uses: actions/upload-artifact@v4
         with:
           name: DAST_Report_${{ env.SERVICE }}.html
           path: report_html.html
 
+      # Limpieza
       - name: Stop and clean up container
         if: always()
         run: |
-          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
-            docker stop backend && docker rm backend
-          else
-            docker stop frontend && docker rm frontend
-          fi
-          docker container prune --force --filter "label=DAST_SCAN"
-          docker image prune --force --filter "label=DAST_SCAN"
-
+          docker rm -f dast-backend || true
+          docker rm -f dast-frontend || true
+          docker container prune --force
+          docker image prune --force
