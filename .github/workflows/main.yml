@@ -21,7 +21,6 @@ jobs:
 
   sca:
     needs: build
-    name: SCA
     uses: ./.github/workflows/sca.yml
     secrets: inherit
 
@@ -32,22 +31,21 @@ jobs:
 
   license-compliance:
     needs: build
-    name: License Compliance
     uses: ./.github/workflows/license-compliance.yml
     secrets: inherit
 
   dast-backend:
     needs: build
-    name: DAST Scan Backend
     uses: ./.github/workflows/dast.yml
-    secrets: inherit
     with:
       service: backend
+    secrets: inherit
+    name: DAST Scan Backend
 
   dast-frontend:
     needs: build
-    name: DAST Scan Frontend
     uses: ./.github/workflows/dast.yml
-    secrets: inherit
     with:
       service: frontend
+    secrets: inherit
+    name: DAST Scan Frontend
