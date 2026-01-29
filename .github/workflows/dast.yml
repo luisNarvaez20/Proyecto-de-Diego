@@ -1,0 +1,113 @@
+name: DAST Scan - Proyecto de Diego
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        type: choice
+        description: 'El servicio a escanear'
+        required: true
+        options:
+          - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+      image-tag:
+        type: string
+        description: 'Nombre de la imagen Docker a escanear'
+        required: true
+
+  workflow_call:
+    inputs:
+      service:
+        type: string
+        required: true
+      image-tag:
+        type: string
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  SERVICE: ${{ github.event.inputs.service }}
+  IMAGE_TAG: ${{ github.event.inputs['image-tag'] }}
+
+jobs:
+  dast-scan:
+    name: DAST Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start Docker container
+        run: |
+          docker rm ${{ env.SERVICE }} || true
+          
+          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+            docker run -d -p 8080:8080 --name backend \
+              -e MONGO_URI=${{ secrets.MONGO_URI }} \
+              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+              -e NODE_SENDING_EMAIL_ADDRESS=${{ secrets.NODE_SENDING_EMAIL_ADDRESS }} \
+              -e NODE_SENDING_EMAIL_PASSWORD=${{ secrets.NODE_SENDING_EMAIL_PASSWORD }} \
+              -e HMAC_VERIFICATION_CODE_SECRET=${{ secrets.HMAC_VERIFICATION_CODE_SECRET }} \
+              -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
+              ${{ env.IMAGE_TAG }}
+          else
+            docker run -d -p 3000:3000 --name frontend ${{ env.IMAGE_TAG }}
+          fi
+
+      - name: Wait for container to be ready
+        run: |
+          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+            timeout 300 bash -c 'until [[ "$(curl -s -o /dev/null -w "%{http_code}" localhost:8080/echo?msg=test)" == "200" ]]; do sleep 5; done'
+          else
+            timeout 300 bash -c 'until [[ "$(curl -s -o /dev/null -w "%{http_code}" localhost:3000)" == "200" ]]; do sleep 5; done'
+          fi
+
+      - name: Smoke test container
+        run: |
+          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+            curl -s localhost:8080/echo?msg=Hello%20World!
+          else
+            curl -s localhost:3000
+          fi
+
+      - name: Set Target URL for ZAP
+        run: |
+          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
+          else
+            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
+
+      - name: Run OWASP ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.11.0
+        with:
+          docker_name: 'owasp/zap2docker-stable'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: ${{ env.TARGET_URL }}
+          cmd_options: '-a -j -l WARN -z "-addoninstallall"'
+          allow_issue_writing: false
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAST_Report_${{ env.SERVICE }}.html
+          path: report_html.html
+
+      - name: Stop and clean up container
+        if: always()
+        run: |
+          if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
+            docker stop backend && docker rm backend
+          else
+            docker stop frontend && docker rm frontend
+          fi
+          docker container prune --force --filter "label=DAST_SCAN"
+          docker image prune --force --filter "label=DAST_SCAN"
+
