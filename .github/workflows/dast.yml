@@ -2,14 +2,13 @@ name: DAST Scan - Proyecto DAST
 
 on:
   workflow_call:
-    inputs:
-      service:
-        required: true
-        type: string  # backend o frontend
 
 jobs:
   dast:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend, frontend]
 
     steps:
       - name: Checkout repo
@@ -20,38 +19,41 @@ jobs:
         with:
           node-version: 18
 
-      # Instalar dependencias según el servicio
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/node_modules
+            front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+
       - name: Install dependencies
         run: |
-          if [ "${{ inputs.service }}" = "backend" ]; then
+          if [ "${{ matrix.service }}" = "backend" ]; then
             cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-            npm ci
           else
             cd front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-            npm ci
           fi
+          npm ci
 
-      # Iniciar servicio según el tipo
       - name: Start Service
         run: |
-          if [ "${{ inputs.service }}" = "backend" ]; then
+          if [ "${{ matrix.service }}" = "backend" ]; then
             cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-            nohup npm start &
+            npm start &
             echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
           else
             cd front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-            nohup npm start -- --port 3000 &
+            npm start -- --port 3000 &
             echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
           fi
-          sleep 10  # Esperar a que el servicio inicie
 
-      # Esperar a que la app esté lista
-      - name: Wait for app ready
+      - name: Wait for service ready
         run: |
+          npm install -g wait-on
           echo "Esperando servicio listo en $TARGET_URL..."
-          timeout 120 bash -c 'until curl -s $TARGET_URL > /dev/null; do sleep 5; done'
+          npx wait-on $TARGET_URL
 
-      # Ejecutar OWASP ZAP
       - name: Run OWASP ZAP
         uses: zaproxy/action-full-scan@v0.11.0
         with:
@@ -60,9 +62,8 @@ jobs:
           cmd_options: '-a -j -l WARN -z "-addoninstallall"'
           allow_issue_writing: false
 
-      # Subir reporte
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: DAST_Report_${{ inputs.service }}.html
+          name: DAST_Report_${{ matrix.service }}.html
           path: report_html.html
