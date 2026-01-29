@@ -1,60 +1,72 @@
-name: Build
+name: DAST Scan - Proyecto DAST
 
 on:
   workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string  # backend o frontend
 
 jobs:
-  build-frontend:
-    name: Build Frontend
+  dast:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: npm
-          cache-dependency-path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Test Frontend
-        run: npm test --if-present
-
-      - name: Build Frontend
-        run: npm run build --if-present
-
-
-  build-backend:
-    name: Build Backend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # Descargar artefactos según el servicio
+      - name: Download Frontend Build
+        if: ${{ inputs.service == 'frontend' }}
+        uses: actions/download-artifact@v4
         with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/package-lock.json
+          name: frontend-build
+          path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/build
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Download Backend Build
+        if: ${{ inputs.service == 'backend' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
 
-      - name: Test Backend
-        run: npm test --if-present
+      # Iniciar servicios desde build
+      - name: Start Frontend from Build
+        if: ${{ inputs.service == 'frontend' }}
+        run: |
+          npm install -g serve
+          serve -s front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/build -l 3000 &
+          sleep 5
+          echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
 
-      - name: Build Backend
-        run: npm run build --if-present
+      - name: Start Backend from Build
+        if: ${{ inputs.service == 'backend' }}
+        run: |
+          cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          nohup node index.js &
+          sleep 5
+          echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
+
+      - name: Wait for app ready
+        run: |
+          echo "Esperando servicio listo en $TARGET_URL..."
+          timeout 120 bash -c 'until curl -s $TARGET_URL > /dev/null; do sleep 5; done'
+
+      - name: Run OWASP ZAP
+        uses: zaproxy/action-full-scan@v0.11.0
+        with:
+          docker_name: 'owasp/zap2docker-stable'
+          target: ${{ env.TARGET_URL }}
+          cmd_options: '-a -j -l WARN -z "-addoninstallall"'
+          allow_issue_writing: false
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAST_Report_${{ inputs.service }}.html
+          path: report_html.html
