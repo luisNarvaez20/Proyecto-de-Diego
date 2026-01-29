@@ -36,10 +36,18 @@ jobs:
     uses: ./.github/workflows/license-compliance.yml
     secrets: inherit
 
-  dast:
+  dast-backend:
     needs: build
-    name: DAST Scan
+    name: DAST Scan Backend
     uses: ./.github/workflows/dast.yml
     secrets: inherit
     with:
-      service: backend   # solo backend o frontend según lo que quieras escanear
+      service: backend
+
+  dast-frontend:
+    needs: build
+    name: DAST Scan Frontend
+    uses: ./.github/workflows/dast.yml
+    secrets: inherit
+    with:
+      service: frontend
