@@ -34,7 +34,16 @@ jobs:
     uses: ./.github/workflows/license-compliance.yml
     secrets: inherit
 
-  dast:
+  dast-frontend:
     needs: build
     uses: ./.github/workflows/dast.yml
+    with:
+      service: frontend
+    secrets: inherit
+
+  dast-backend:
+    needs: build
+    uses: ./.github/workflows/dast.yml
+    with:
+      service: backend
     secrets: inherit

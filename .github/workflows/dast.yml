@@ -1,69 +1,29 @@
-name: DAST Scan - Proyecto DAST
+name: 02 - DAST Pipeline
 
 on:
+  push:
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+      - 'docs/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  security-events: write
+
 jobs:
-  dast:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [backend, frontend]
+  dast-frontend:
+    uses: ./.github/workflows/dast.yml
+    with:
+      service: frontend
+    secrets: inherit
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Cache dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/node_modules
-            front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/node_modules
-          key: ${{ runner.os }}-npm-${{ matrix.service }}-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Install dependencies
-        run: |
-          if [ "${{ matrix.service }}" = "backend" ]; then
-            cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-          else
-            cd front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-          fi
-          npm ci
-
-      - name: Start Service
-        run: |
-          if [ "${{ matrix.service }}" = "backend" ]; then
-            cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-            npm start &
-            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
-          else
-            cd front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-            npm start -- --port 3000 &
-            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
-          fi
-
-      - name: Wait for service ready
-        run: |
-          npm install -g wait-on
-          echo "Esperando servicio listo en $TARGET_URL..."
-          npx wait-on --timeout 120000 $TARGET_URL
-
-      - name: Run OWASP ZAP
-        uses: zaproxy/action-full-scan@v0.11.0
-        with:
-          docker_name: 'owasp/zap2docker-stable'
-          target: ${{ env.TARGET_URL }}
-          cmd_options: '-a -j -l WARN -z "-addoninstallall"'
-          allow_issue_writing: false
-
-      - name: Upload report
-        uses: actions/upload-artifact@v4
-        with:
-          name: DAST_Report_${{ matrix.service }}.html
-          path: report_html.html
+  dast-backend:
+    needs: dast-frontend
+    uses: ./.github/workflows/dast.yml
+    with:
+      service: backend
+    secrets: inherit
