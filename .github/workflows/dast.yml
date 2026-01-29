@@ -1,29 +1,72 @@
-name: 02 - DAST Pipeline
+name: DAST Scan - Proyecto DAST
 
 on:
-  push:
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.txt'
-      - 'docs/**'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  checks: write
-  pull-requests: write
-  security-events: write
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string  # frontend o backend
 
 jobs:
-  dast-frontend:
-    uses: ./.github/workflows/dast.yml
-    with:
-      service: frontend
-    secrets: inherit
+  dast:
+    runs-on: ubuntu-latest
 
-  dast-backend:
-    needs: dast-frontend
-    uses: ./.github/workflows/dast.yml
-    with:
-      service: backend
-    secrets: inherit
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # Descargar artefactos según el servicio
+      - name: Download Frontend Build
+        if: ${{ inputs.service == 'frontend' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/build
+
+      - name: Download Backend Build
+        if: ${{ inputs.service == 'backend' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+
+      # Iniciar servicios desde build
+      - name: Start Frontend from Build
+        if: ${{ inputs.service == 'frontend' }}
+        run: |
+          npm install -g serve
+          serve -s front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/build -l 3000 &
+          sleep 5
+          echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
+
+      - name: Start Backend from Build
+        if: ${{ inputs.service == 'backend' }}
+        run: |
+          cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          nohup node index.js &
+          sleep 5
+          echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
+
+      - name: Wait for app ready
+        run: |
+          echo "Esperando servicio listo en $TARGET_URL..."
+          timeout 120 bash -c 'until curl -s $TARGET_URL > /dev/null; do sleep 5; done'
+
+      - name: Run OWASP ZAP
+        uses: zaproxy/action-full-scan@v0.11.0
+        with:
+          docker_name: 'owasp/zap2docker-stable'
+          target: ${{ env.TARGET_URL }}
+          cmd_options: '-a -j -l WARN -z "-addoninstallall"'
+          allow_issue_writing: false
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAST_Report_${{ inputs.service }}.html
+          path: report_html.html
