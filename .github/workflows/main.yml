@@ -40,7 +40,6 @@ jobs:
     with:
       service: backend
     secrets: inherit
-    name: DAST Scan Backend
 
   dast-frontend:
     needs: build
@@ -48,4 +47,4 @@ jobs:
     with:
       service: frontend
     secrets: inherit
-    name: DAST Scan Frontend
+
