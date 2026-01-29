@@ -1,6 +1,7 @@
 name: DAST Scan - Proyecto de Diego
 
 on:
+  # Permite ejecución manual
   workflow_dispatch:
     inputs:
       service:
@@ -15,10 +16,20 @@ on:
         description: 'Tag que se usará para la imagen Docker'
         required: true
 
+  # Permite que sea reusable desde otros workflows
+  workflow_call:
+    inputs:
+      service:
+        type: string
+        required: true
+      image-tag:
+        type: string
+        required: true
+
 env:
   REGISTRY: ghcr.io
-  SERVICE: ${{ github.event.inputs.service }}
-  IMAGE_TAG: ${{ github.event.inputs['image-tag'] }}
+  SERVICE: ${{ github.event.inputs.service || github.inputs.service }}
+  IMAGE_TAG: ${{ github.event.inputs['image-tag'] || github.inputs['image-tag'] }}
 
 jobs:
   dast-scan:
@@ -36,7 +47,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Construye la imagen Docker local
       - name: Build Docker image
         run: |
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
@@ -45,7 +55,6 @@ jobs:
             docker build -t ${{ env.IMAGE_TAG }} ./front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
           fi
 
-      # Levanta el contenedor para pruebas
       - name: Start Docker container
         run: |
           docker rm -f dast-${{ env.SERVICE }} || true
@@ -62,7 +71,6 @@ jobs:
             docker run -d -p 3000:3000 --name dast-frontend ${{ env.IMAGE_TAG }}
           fi
 
-      # Espera a que el servicio esté listo
       - name: Wait for container
         run: |
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
@@ -73,7 +81,6 @@ jobs:
             echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
           fi
 
-      # Prueba rápida de que el contenedor responde
       - name: Smoke test
         run: |
           if [[ "${{ env.SERVICE }}" == *"back-end"* ]]; then
@@ -82,7 +89,6 @@ jobs:
             curl -s localhost:3000
           fi
 
-      # Escaneo OWASP ZAP
       - name: Run OWASP ZAP Full Scan
         uses: zaproxy/action-full-scan@v0.11.0
         with:
@@ -92,14 +98,12 @@ jobs:
           cmd_options: '-a -j -l WARN -z "-addoninstallall"'
           allow_issue_writing: false
 
-      # Guardar reporte
       - name: Upload HTML Report
         uses: actions/upload-artifact@v4
         with:
           name: DAST_Report_${{ env.SERVICE }}.html
           path: report_html.html
 
-      # Limpieza
       - name: Stop and clean up container
         if: always()
         run: |
