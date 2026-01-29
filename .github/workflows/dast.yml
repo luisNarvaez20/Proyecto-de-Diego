@@ -1,7 +1,7 @@
 name: DAST Scan - Proyecto DAST
 
 on:
-  workflow_call: {}  # Sin inputs, listo para ser llamado
+  workflow_dispatch:
 
 jobs:
   dast:
