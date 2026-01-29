@@ -1,15 +1,11 @@
 name: DAST Scan - Proyecto DAST
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       service:
-        type: choice
-        description: 'Servicio a escanear (backend o frontend)'
         required: true
-        options:
-          - backend
-          - frontend
+        type: string   # backend o frontend
 
 jobs:
   dast:
@@ -25,19 +21,19 @@ jobs:
           node-version: 18
 
       - name: Install backend dependencies
-        if: ${{ github.event.inputs.service == 'backend' }}
+        if: ${{ inputs.service == 'backend' }}
         run: |
           cd Servicios/back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
           npm ci
 
       - name: Install frontend dependencies
-        if: ${{ github.event.inputs.service == 'frontend' }}
+        if: ${{ inputs.service == 'frontend' }}
         run: |
           cd Servicios/front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
           npm ci
 
       - name: Start Backend
-        if: ${{ github.event.inputs.service == 'backend' }}
+        if: ${{ inputs.service == 'backend' }}
         run: |
           cd Servicios/back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
           nohup npm start &
@@ -45,7 +41,7 @@ jobs:
           echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
 
       - name: Start Frontend
-        if: ${{ github.event.inputs.service == 'frontend' }}
+        if: ${{ inputs.service == 'frontend' }}
         run: |
           cd Servicios/front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
           nohup npm start -- --port 3000 &
@@ -68,5 +64,5 @@ jobs:
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: DAST_Report_${{ github.event.inputs.service }}.html
+          name: DAST_Report_${{ inputs.service }}.html
           path: report_html.html
