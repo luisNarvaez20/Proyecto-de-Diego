@@ -1,124 +1,72 @@
-name: DAST Scan - Proyecto de Diego
+name: DAST Scan - Proyecto DAST
 
 on:
   workflow_dispatch:
     inputs:
       service:
         type: choice
-        description: 'El servicio a escanear'
+        description: 'Servicio a escanear (backend o frontend)'
         required: true
         options:
-          - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-          - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-      image-tag:
-        type: string
-        description: 'Tag que se usará para la imagen Docker'
-        required: true
-
-  workflow_call:
-    inputs:
-      service:
-        type: string
-        required: true
-      image-tag:
-        type: string
-        required: true
+          - backend
+          - frontend
 
 jobs:
-  dast-scan:
+  dast:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set variables
-        run: |
-          # Para ejecución manual
-          SERVICE="${GITHUB_EVENT_PATH:+$(jq -r .inputs.service "$GITHUB_EVENT_PATH")}"
-          IMAGE_TAG="${GITHUB_EVENT_PATH:+$(jq -r .inputs['image-tag'] "$GITHUB_EVENT_PATH")}"
-
-          # Para reusable workflow
-          if [ -z "$SERVICE" ]; then
-            SERVICE="${{ github.inputs.service }}"
-            IMAGE_TAG="${{ github.inputs['image-tag'] }}"
-          fi
-
-          echo "SERVICE=$SERVICE" >> $GITHUB_ENV
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "SERVICE=$SERVICE"
-          echo "IMAGE_TAG=$IMAGE_TAG"
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v2
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: 18
 
-      - name: Build Docker image
+      - name: Install backend dependencies
+        if: ${{ github.event.inputs.service == 'backend' }}
         run: |
-          TAG_FULL="ghcr.io/myorg/$IMAGE_TAG"  # Cambia myorg
-          if [[ "$SERVICE" == *"back-end"* ]]; then
-            docker build -t $TAG_FULL ./back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
-          else
-            docker build -t $TAG_FULL ./front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
-          fi
+          cd Servicios/back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          npm ci
 
-      - name: Run Docker container
+      - name: Install frontend dependencies
+        if: ${{ github.event.inputs.service == 'frontend' }}
         run: |
-          CONTAINER_NAME="dast-${SERVICE}"
-          docker rm -f $CONTAINER_NAME || true
+          cd Servicios/front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          npm ci
 
-          if [[ "$SERVICE" == *"back-end"* ]]; then
-            docker run -d -p 8080:8080 --name $CONTAINER_NAME \
-              -e MONGO_URI=${{ secrets.MONGO_URI }} \
-              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
-              -e NODE_SENDING_EMAIL_ADDRESS=${{ secrets.NODE_SENDING_EMAIL_ADDRESS }} \
-              -e NODE_SENDING_EMAIL_PASSWORD=${{ secrets.NODE_SENDING_EMAIL_PASSWORD }} \
-              -e HMAC_VERIFICATION_CODE_SECRET=${{ secrets.HMAC_VERIFICATION_CODE_SECRET }} \
-              -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
-              $TAG_FULL
-            echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
-          else
-            docker run -d -p 3000:3000 --name $CONTAINER_NAME $TAG_FULL
-            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
-          fi
-
-      - name: Wait for container
+      - name: Start Backend
+        if: ${{ github.event.inputs.service == 'backend' }}
         run: |
-          TIMEOUT=300
-          INTERVAL=5
-          END=$((SECONDS+TIMEOUT))
-          while [[ $SECONDS -lt $END ]]; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" $TARGET_URL/echo?msg=test || echo "000")
-            if [[ "$STATUS" == "200" ]]; then break; fi
-            sleep $INTERVAL
-          done
-          if [[ "$STATUS" != "200" ]]; then
-            echo "ERROR: Servicio no respondió en $TIMEOUT segundos"
-            exit 1
-          fi
+          cd Servicios/back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          nohup npm start &
+          sleep 10
+          echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
 
-      - name: OWASP ZAP Scan
+      - name: Start Frontend
+        if: ${{ github.event.inputs.service == 'frontend' }}
+        run: |
+          cd Servicios/front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
+          nohup npm start -- --port 3000 &
+          sleep 10
+          echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
+
+      - name: Wait for app ready
+        run: |
+          echo "Esperando servicio listo en $TARGET_URL..."
+          timeout 120 bash -c 'until curl -s $TARGET_URL > /dev/null; do sleep 5; done'
+
+      - name: Run OWASP ZAP
         uses: zaproxy/action-full-scan@v0.11.0
         with:
           docker_name: 'owasp/zap2docker-stable'
-          token: ${{ secrets.GITHUB_TOKEN }}
-          target: $TARGET_URL
+          target: ${{ env.TARGET_URL }}
           cmd_options: '-a -j -l WARN -z "-addoninstallall"'
           allow_issue_writing: false
 
-      - name: Upload HTML Report
+      - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: DAST_Report_${SERVICE}.html
+          name: DAST_Report_${{ github.event.inputs.service }}.html
           path: report_html.html
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker rm -f dast-backend || true
-          docker rm -f dast-frontend || true
-          docker container prune --force
-          docker image prune --force
