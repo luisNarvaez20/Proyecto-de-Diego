@@ -1,7 +1,6 @@
 name: DAST Scan - Proyecto de Diego
 
 on:
-  # Ejecución manual
   workflow_dispatch:
     inputs:
       service:
@@ -11,12 +10,12 @@ on:
         options:
           - front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0
           - back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+
       image-tag:
         type: string
         description: 'Tag que se usará para la imagen Docker'
         required: true
 
-  # Ejecución desde otros workflows (reusable)
   workflow_call:
     inputs:
       service:
@@ -26,16 +25,14 @@ on:
         type: string
         required: true
 
-env:
-  REGISTRY: ghcr.io
-  # SERVICE e IMAGE_TAG funcionan según cómo se ejecute: manual o reusable
-  SERVICE: ${{ github.event.inputs.service || github.inputs.service }}
-  IMAGE_TAG: ${{ github.event.inputs['image-tag'] || github.inputs['image-tag'] }}
-
 jobs:
   dast-scan:
     name: DAST Scan
     runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      SERVICE: ${{ github.event.inputs.service || github.inputs.service }}
+      IMAGE_TAG: ${{ github.event.inputs['image-tag'] || github.inputs['image-tag'] }}
 
     steps:
       - name: Checkout repository
@@ -113,7 +110,6 @@ jobs:
 
       - name: Smoke test
         run: |
-          echo "Probando que el contenedor responde..."
           curl -s ${{ env.TARGET_URL }}
 
       - name: Run OWASP ZAP Full Scan
