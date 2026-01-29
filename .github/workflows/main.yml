@@ -34,17 +34,92 @@ jobs:
     uses: ./.github/workflows/license-compliance.yml
     secrets: inherit
 
+  # --- DAST Frontend ---
   dast-frontend:
     needs: build
-    uses: ./.github/workflows/dast.yml
-    with:
-      service: frontend
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Download Frontend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/build
+
+      - name: Start Frontend from Build
+        run: |
+          npm install -g serve
+          serve -s front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/build -l 3000 &
+          sleep 5
+          echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
+
+      - name: Wait for app ready
+        run: |
+          echo "Esperando servicio listo en $TARGET_URL..."
+          timeout 120 bash -c 'until curl -s $TARGET_URL > /dev/null; do sleep 5; done'
+
+      - name: Run OWASP ZAP
+        uses: zaproxy/action-full-scan@v0.11.0
+        with:
+          docker_name: 'owasp/zap2docker-stable'
+          target: ${{ env.TARGET_URL }}
+          cmd_options: '-a -j -l WARN -z "-addoninstallall"'
+          allow_issue_writing: false
+
+      - name: Upload Frontend DAST report
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAST_Frontend_Report.html
+          path: report_html.html
+
+  # --- DAST Backend ---
   dast-backend:
     needs: build
-    uses: ./.github/workflows/dast.yml
-    with:
-      service: backend
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Download Backend Build
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+
+      - name: Start Backend from Build
+        run: |
+          cd back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5
+          nohup node index.js &
+          sleep 5
+          echo "TARGET_URL=http://localhost:8080" >> $GITHUB_ENV
+
+      - name: Wait for app ready
+        run: |
+          echo "Esperando servicio listo en $TARGET_URL..."
+          timeout 120 bash -c 'until curl -s $TARGET_URL > /dev/null; do sleep 5; done'
+
+      - name: Run OWASP ZAP
+        uses: zaproxy/action-full-scan@v0.11.0
+        with:
+          docker_name: 'owasp/zap2docker-stable'
+          target: ${{ env.TARGET_URL }}
+          cmd_options: '-a -j -l WARN -z "-addoninstallall"'
+          allow_issue_writing: false
+
+      - name: Upload Backend DAST report
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAST_Backend_Report.html
+          path: report_html.html
