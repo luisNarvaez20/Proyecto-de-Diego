@@ -127,4 +127,3 @@ jobs:
         with:
           name: DAST_Backend_Report.html
           path: report_html.html
-
