@@ -1,7 +1,7 @@
 name: DAST Scan - Proyecto DAST
 
 on:
-  workflow_call:
+  workflow_call: {}  # Sin inputs, listo para ser llamado
 
 jobs:
   dast:
@@ -25,7 +25,7 @@ jobs:
           path: |
             back-end_PIS6TO-291358e1d35195c74d4328034fd56025d9795ac5/node_modules
             front-end_PIS6TO-db594e860f4b1fa1f199237b67f00011c9d31bc0/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-${{ matrix.service }}-${{ hashFiles('**/package-lock.json') }}
 
       - name: Install dependencies
         run: |
@@ -52,7 +52,7 @@ jobs:
         run: |
           npm install -g wait-on
           echo "Esperando servicio listo en $TARGET_URL..."
-          npx wait-on $TARGET_URL
+          npx wait-on --timeout 120000 $TARGET_URL
 
       - name: Run OWASP ZAP
         uses: zaproxy/action-full-scan@v0.11.0
